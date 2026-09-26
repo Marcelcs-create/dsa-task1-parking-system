@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Automated Parking System</title>
+<style>
+  :root {
+    --navy: #2F5496;
+    --free: #2e7d32;
+    --occupied: #c62828;
+    --bg: #f4f6f9;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", Arial, sans-serif;
+    background: var(--bg);
+    margin: 0;
+    padding: 20px;
+    color: #222;
+  }
+  h1 {
+    color: var(--navy);
+    margin-bottom: 4px;
+  }
+  .subtitle { color: #666; margin-top: 0; margin-bottom: 20px; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  @media (min-width: 900px) {
+    .layout { grid-template-columns: 1fr 1fr; }
+  }
+
+  .card {
+    background: white;
+    border-radius: 10px;
+    padding: 18px 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  }
+  .card h2 {
+    margin-top: 0;
+    font-size: 18px;
+    color: var(--navy);
+    border-bottom: 2px solid var(--bg);
+    padding-bottom: 8px;
+  }
+
+  .slot-summary { display: flex; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
+  .stat { flex: 1; min-width: 100px; text-align: center; padding: 10px; border-radius: 8px; background: var(--bg); }
+  .stat .num { font-size: 26px; font-weight: bold; color: var(--navy); }
+  .stat .label { font-size: 12px; color: #666; }
+
+  .slot-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+    gap: 8px;
+  }
+  .slot {
+    padding: 10px 4px;
+    border-radius: 6px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: bold;
+    color: white;
+  }
+  .slot.FREE { background: var(--free); }
+  .slot.OCCUPIED { background: var(--occupied); }
+
+  form { display: flex; flex-direction: column; gap: 10px; }
+  label { font-size: 13px; color: #444; }
+  input, select, button {
+    padding: 9px 10px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    font-size: 14px;
+  }
+  button {
+    background: var(--navy);
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+  }
+  button:hover { opacity: 0.9; }
+  button.secondary { background: #666; }
+
+  .result {
+    margin-top: 10px;
+    padding: 10px;
+    border-radius: 6px;
+    font-size: 14px;
+    white-space: pre-wrap;
+  }
+  .result.ok { background: #e6f4ea; color: #1e4620; }
+  .result.err { background: #fdecea; color: #611a15; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; }
+</style>
+</head>
+<body>
+
+<h1>🚗 Automated Parking System</h1>
+<p class="subtitle">Frontend (HTML/JS) &rarr; Backend (Flask) &rarr; Database (SQLite)</p>
+
+<div class="layout">
+
+  <!-- Module 1: Slot Display -->
+  <div class="card">
+    <h2>1. Slot Display</h2>
+    <div class="slot-summary">
+      <div class="stat"><div class="num" id="total-slots">-</div><div class="label">Total</div></div>
+      <div class="stat"><div class="num" id="occupied-slots">-</div><div class="label">Occupied</div></div>
+      <div class="stat"><div class="num" id="available-slots">-</div><div class="label">Available</div></div>
+      <div class="stat"><div class="num" id="waiting-count">-</div><div class="label">Waiting (Queue)</div></div>
+    </div>
+    <div class="slot-grid" id="slot-grid"></div>
+  </div>
+
+  <!-- Module 2: Vehicle Entry -->
+  <div class="card">
+    <h2>2. Vehicle Entry / Registration</h2>
+    <form id="entry-form">
+      <label>Plate number</label>
+      <input type="text" id="entry-plate" placeholder="KDA 001A" required>
+      <label>Vehicle type</label>
+      <select id="entry-type">
+        <option value="car">Car</option>
+        <option value="motorcycle">Motorcycle</option>
+      </select>
+      <button type="submit">Register Entry</button>
+    </form>
+    <div id="entry-result"></div>
+  </div>
+
+  <!-- Modules 3 & 7: Exit + Fee + Verification -->
+  <div class="card">
+    <h2>3. Exit, Fee &amp; Verification</h2>
+    <form id="exit-form">
+      <label>Ticket ID</label>
+      <input type="number" id="exit-ticket-id" required>
+      <label>Exit plate (camera capture)</label>
+      <input type="text" id="exit-plate" placeholder="KDA 001A" required>
+      <button type="submit">Request Exit</button>
+    </form>
+    <div id="exit-result"></div>
+  </div>
+
+  <!-- Modules 4 & 5: Payment + Barrier -->
+  <div class="card">
+    <h2>4. Payment &amp; Barrier Control</h2>
+    <form id="pay-form">
+      <label>Ticket ID</label>
+      <input type="number" id="pay-ticket-id" required>
+      <label>Amount paid (KES)</label>
+      <input type="number" step="0.01" id="pay-amount" required>
+      <label>Payment method</label>
+      <select id="pay-method">
+        <option value="cash">Cash</option>
+        <option value="mpesa">M-Pesa</option>
+        <option value="card">Card</option>
+      </select>
+      <button type="submit">Pay &amp; Open Barrier</button>
+    </form>
+    <div id="pay-result"></div>
+    <button class="secondary" id="undo-btn" style="margin-top:10px;">Undo Last Entry (Stack)</button>
+    <div id="undo-result"></div>
+  </div>
+
+  <!-- Module 8: Reporting -->
+  <div class="card" style="grid-column: 1 / -1;">
+    <h2>8. Reporting &amp; Analytics</h2>
+    <button id="refresh-report-btn">Refresh Report</button>
+    <table style="margin-top:12px;">
+      <tr><th>Total Revenue (KES)</th><td id="report-revenue">-</td></tr>
+      <tr><th>Total Tickets Issued</th><td id="report-tickets">-</td></tr>
+      <tr><th>Peak Entry Hour</th><td id="report-peak">-</td></tr>
+    </table>
+  </div>
+
+</div>
+
+<script>
+async function refreshSlots() {
+  const res = await fetch('/api/slots');
+  const data = await res.json();
+  document.getElementById('total-slots').textContent = data.total_slots;
+  document.getElementById('occupied-slots').textContent = data.occupied;
+  document.getElementById('available-slots').textContent = data.available;
+  document.getElementById('waiting-count').textContent = data.waiting_count;
+
+  const grid = document.getElementById('slot-grid');
+  grid.innerHTML = '';
+  data.slots.forEach(s => {
+    const div = document.createElement('div');
+    div.className = 'slot ' + s.status;
+    div.textContent = s.slot_number;
+    grid.appendChild(div);
+  });
+}
+
+function showResult(elId, ok, message) {
+  const el = document.getElementById(elId);
+  el.className = 'result ' + (ok ? 'ok' : 'err');
+  el.textContent = message;
+}
+
+document.getElementById('entry-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const plate = document.getElementById('entry-plate').value;
+  const vehicle_type = document.getElementById('entry-type').value;
+  const res = await fetch('/api/entry', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({plate_number: plate, vehicle_type})
+  });
+  const data = await res.json();
+  if (res.ok) {
+    showResult('entry-result', true, JSON.stringify(data, null, 2));
+    document.getElementById('exit-ticket-id').value = data.ticket_id || '';
+  } else {
+    showResult('entry-result', false, JSON.stringify(data, null, 2));
+  }
+  refreshSlots();
+});
+
+document.getElementById('exit-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const ticket_id = document.getElementById('exit-ticket-id').value;
+  const exit_plate = document.getElementById('exit-plate').value;
+  const res = await fetch('/api/exit', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ticket_id, exit_plate})
+  });
+  const data = await res.json();
+  showResult('exit-result', res.ok, JSON.stringify(data, null, 2));
+  if (res.ok) {
+    document.getElementById('pay-ticket-id').value = ticket_id;
+    document.getElementById('pay-amount').value = data.amount_due || '';
+  }
+});
+
+document.getElementById('pay-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const ticket_id = document.getElementById('pay-ticket-id').value;
+  const amount_paid = document.getElementById('pay-amount').value;
+  const payment_method = document.getElementById('pay-method').value;
+  const res = await fetch('/api/pay', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ticket_id, amount_paid, payment_method})
+  });
+  const data = await res.json();
+  showResult('pay-result', res.ok, JSON.stringify(data, null, 2));
+  refreshSlots();
+});
+
+document.getElementById('undo-btn').addEventListener('click', async () => {
+  const res = await fetch('/api/undo', {method: 'POST'});
+  const data = await res.json();
+  showResult('undo-result', res.ok, JSON.stringify(data, null, 2));
+  refreshSlots();
+});
+
+document.getElementById('refresh-report-btn').addEventListener('click', async () => {
+  const res = await fetch('/api/reports');
+  const data = await res.json();
+  document.getElementById('report-revenue').textContent = data.total_revenue.toFixed(2);
+  document.getElementById('report-tickets').textContent = data.total_tickets;
+  document.getElementById('report-peak').textContent =
+    data.peak_hour === null ? '-' : (data.peak_hour + ':00');
+});
+
+refreshSlots();
+setInterval(refreshSlots, 4000);
+</script>
+</body>
+</html>
